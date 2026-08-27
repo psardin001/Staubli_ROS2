@@ -1,29 +1,41 @@
 from launch import LaunchDescription
-from launch_ros.actions import Node
 from launch.actions import DeclareLaunchArgument
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
+from launch_ros.actions import Node
+from launch_ros.substitutions import FindPackageShare
+
 
 def generate_launch_description():
-    robot_ip_launch_arg = DeclareLaunchArgument(
-        "robot_ip",
-        description="IP address of the robot",
-    )
-    robot_ip = LaunchConfiguration(
-        "robot_ip",
-    )
-    
-    motion_streaming_interface = Node(
-        package="industrial_robot_client",
-        executable="motion_streaming_interface",
-        parameters=[
-            {"robot_ip_address": robot_ip}
-        ],
-        output="log",
-    )
+    robot_ip = LaunchConfiguration('robot_ip')
+    joint_config = LaunchConfiguration('joint_config')
 
     return LaunchDescription(
         [
-            robot_ip_launch_arg,
-            motion_streaming_interface,
+            DeclareLaunchArgument(
+                'robot_ip',
+                description='IP address of the robot',
+            ),
+            DeclareLaunchArgument(
+                'joint_config',
+                default_value=PathJoinSubstitution(
+                    [
+                        FindPackageShare('staubli_val3_driver'),
+                        'config',
+                        'tx2_60l_streaming.yaml',
+                    ]
+                ),
+                description=(
+                    'Joint names and limits for the connected Staubli model'
+                ),
+            ),
+            Node(
+                package='industrial_robot_client',
+                executable='motion_streaming_interface',
+                parameters=[
+                    joint_config,
+                    {'robot_ip_address': robot_ip},
+                ],
+                output='log',
+            ),
         ]
     )

@@ -34,13 +34,13 @@
 // Copyright 2025 ACRO - KULeuven
 
 #include <algorithm>
+#include <cmath>
+#include <set>
 #include "industrial_robot_client/joint_trajectory_interface.hpp"
 #include "simple_message/joint_traj_pt.hpp"
-#include "industrial_utils/param_utils.hpp"
 #include "rcpputils/asserts.hpp"
 
 
-using namespace industrial_utils::param;
 using industrial::simple_message::SimpleMessage;
 namespace StandardSocketPorts = industrial::simple_socket::StandardSocketPorts;
 namespace SpecialSeqValues = industrial::joint_traj_pt::SpecialSeqValues;
@@ -54,7 +54,12 @@ namespace joint_trajectory_interface
 
 #define ROS_ERROR_RETURN(rtn,...) do {ROS_ERROR(__VA_ARGS__); return(rtn);} while(0)
 
-JointTrajectoryInterface::JointTrajectoryInterface() : Node("joint_trajectory_interface"), default_joint_pos_(0.0), default_vel_ratio_(0.1), default_duration_(10.0)
+JointTrajectoryInterface::JointTrajectoryInterface()
+  : Node("joint_trajectory_interface"),
+    connection_(nullptr),
+    default_joint_pos_(0.0),
+    default_vel_ratio_(0.1),
+    default_duration_(10.0)
 {
 }
 
@@ -91,16 +96,46 @@ bool JointTrajectoryInterface::init(std::string default_ip, int default_port)
 
 bool JointTrajectoryInterface::init(SmplMsgConnection* connection)
 {
-  std::vector<std::string> joint_names;
-  ParamUtils pu;
-  // if (!pu.getJointNames("move_group", "rviz2", "controller_joint_names", "robot_description", joint_names))
-  if (!pu.getJointNames("move_group", "moveit_simple_controller_manager.manipulator_controller.joints", joint_names))
+  const auto joint_names = this->declare_parameter<std::vector<std::string>>(
+    "joint_names", std::vector<std::string>());
+  const std::set<std::string> unique_joint_names(
+    joint_names.begin(), joint_names.end());
+  if (joint_names.empty()
+    || unique_joint_names.size() != joint_names.size()
+    || unique_joint_names.count(std::string()) != 0)
   {
-    RCLCPP_ERROR(this->get_logger(), "Failed to initialize joint_names.  Aborting");
+    RCLCPP_ERROR(
+      this->get_logger(),
+      "Parameter 'joint_names' must contain unique non-empty names");
     return false;
   }
 
-  return init(connection, joint_names);
+  const auto velocity_values = this->declare_parameter<std::vector<double>>(
+    "joint_velocity_limits", std::vector<double>());
+  if (velocity_values.size() != joint_names.size())
+  {
+    RCLCPP_ERROR(
+      this->get_logger(),
+      "Parameter 'joint_velocity_limits' has %zu entries; expected %zu",
+      velocity_values.size(), joint_names.size());
+    return false;
+  }
+  if (std::any_of(
+        velocity_values.begin(), velocity_values.end(),
+        [](double limit) { return !std::isfinite(limit) || limit <= 0.0; }))
+  {
+    RCLCPP_ERROR(
+      this->get_logger(),
+      "Parameter 'joint_velocity_limits' must contain finite positive values");
+    return false;
+  }
+
+  std::map<std::string, double> velocity_limits;
+  for (size_t index = 0; index < velocity_values.size(); ++index)
+  {
+    velocity_limits.emplace(joint_names[index], velocity_values[index]);
+  }
+  return init(connection, joint_names, velocity_limits);
 }
 
 bool JointTrajectoryInterface::init(SmplMsgConnection* connection, const std::vector<std::string> &joint_names,
@@ -113,10 +148,8 @@ bool JointTrajectoryInterface::init(SmplMsgConnection* connection, const std::ve
   this->joint_vel_limits_ = velocity_limits;
   connection_->makeConnect();
 
-  // try to read velocity limits from URDF, if none specified
-  ParamUtils pu;
-  if (joint_vel_limits_.empty() && !pu.getJointVelocityLimits("moveit_simple_controller_manager", "robot_description", joint_vel_limits_))
-    RCLCPP_WARN(this->get_logger(), "Unable to read velocity limits from 'robot_description' param.  Velocity validation disabled.");
+  if (joint_vel_limits_.empty())
+    RCLCPP_WARN(this->get_logger(), "No joint velocity limits configured; velocity validation is disabled");
 
 
 
@@ -129,15 +162,16 @@ bool JointTrajectoryInterface::init(SmplMsgConnection* connection, const std::ve
 }
 
 JointTrajectoryInterface::~JointTrajectoryInterface()
-{  
-  trajectoryStop();
+{
+  if (connection_ != nullptr)
+    trajectoryStop();
 }
 
 void JointTrajectoryInterface::jointTrajectoryCB(const std::shared_ptr<industrial_msgs::srv::CmdJointTrajectory::Request> req,
                                                  std::shared_ptr<industrial_msgs::srv::CmdJointTrajectory::Response> res)
 {
-  trajectory_msgs::msg::JointTrajectory::SharedPtr traj_ptr;
-  *traj_ptr = req->trajectory;
+  auto traj_ptr = std::make_shared<trajectory_msgs::msg::JointTrajectory>(
+    req->trajectory);
   this->jointTrajectorySubCB(traj_ptr);
 
   // no success/fail result from jointTrajectoryCB.  Assume success.
@@ -257,8 +291,8 @@ bool JointTrajectoryInterface::calc_speed(const trajectory_msgs::msg::JointTraje
 // default velocity calculation computes the %-of-max-velocity for the "critical joint" (closest to velocity-limit)
 // such that 0.2 = 20% of maximum joint speed.
 //
-// NOTE: this calculation uses the maximum joint speeds from the URDF file, which may differ from those defined on
-// the physical robot.  These differences could lead to different actual movement velocities than intended.
+// NOTE: this calculation uses the configured maximum joint speeds, which may differ from those defined on the
+// physical robot. These differences could lead to different actual movement velocities than intended.
 // Behavior should be verified on a physical robot if movement velocity is critical.
 bool JointTrajectoryInterface::calc_velocity(const trajectory_msgs::msg::JointTrajectoryPoint& pt, double* rbt_velocity, const bool &final)
 {
@@ -349,6 +383,9 @@ JointTrajPtMessage JointTrajectoryInterface::create_message(int seq, std::vector
 
 void JointTrajectoryInterface::trajectoryStop()
 {
+  if (connection_ == nullptr)
+    return;
+
   JointTrajPtMessage jMsg;
   SimpleMessage msg, reply;
 
@@ -372,6 +409,12 @@ void JointTrajectoryInterface::stopMotionCB(const std::shared_ptr<industrial_msg
 
 bool JointTrajectoryInterface::is_valid(const trajectory_msgs::msg::JointTrajectory &traj)
 {
+  if (traj.joint_names.empty())
+  {
+    RCLCPP_ERROR(this->get_logger(), "Validation failed: Missing joint names");
+    return false;
+  }
+
   for (size_t i=0; i<traj.points.size(); ++i)
   {
     const trajectory_msgs::msg::JointTrajectoryPoint &pt = traj.points[i];
@@ -380,6 +423,22 @@ bool JointTrajectoryInterface::is_valid(const trajectory_msgs::msg::JointTraject
     if (pt.positions.empty())
     {
       RCLCPP_ERROR(this->get_logger(), "Validation failed: Missing position data for trajectory pt %ld", i);
+      return false;
+    }
+    if (pt.positions.size() != traj.joint_names.size())
+    {
+      RCLCPP_ERROR(
+        this->get_logger(),
+        "Validation failed: Trajectory pt %ld has %zu positions for %zu joints",
+        i, pt.positions.size(), traj.joint_names.size());
+      return false;
+    }
+    if (!pt.velocities.empty() && pt.velocities.size() != traj.joint_names.size())
+    {
+      RCLCPP_ERROR(
+        this->get_logger(),
+        "Validation failed: Trajectory pt %ld has %zu velocities for %zu joints",
+        i, pt.velocities.size(), traj.joint_names.size());
       return false;
     }
 

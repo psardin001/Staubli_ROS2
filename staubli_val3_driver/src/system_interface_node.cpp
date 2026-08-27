@@ -28,7 +28,10 @@ int main(int argc, char** argv)
 
   std::shared_ptr<SystemInterface> si = std::make_shared<SystemInterface>();
   if (!si->init())
-    return 0;
+  {
+    rclcpp::shutdown();
+    return 1;
+  }
 
   si->run();
 

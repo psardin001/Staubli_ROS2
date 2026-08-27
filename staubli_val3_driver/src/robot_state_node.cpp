@@ -31,7 +31,11 @@ int main(int argc, char** argv)
   // launch the default Robot State Interface connection/handlers
   std::shared_ptr<industrial_robot_client::robot_state_interface::RobotStateInterface> rsi = std::make_shared<industrial_robot_client::robot_state_interface::RobotStateInterface>();
   
-  rsi->init();
+  if (!rsi->init())
+  {
+    rclcpp::shutdown();
+    return 1;
+  }
 
   // add the JointFeedback handler
   JointFeedbackRelayHandler joint_fbk_handler;

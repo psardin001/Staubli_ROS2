@@ -99,7 +99,7 @@ public:
    *   - Use blank-name to insert a placeholder joint position (typ. 0.0).
    *   - Joints in the incoming JointTrajectory stream that are NOT listed here will be ignored.
    * \param velocity_limits map of maximum velocities for each joint
-   *   - leave empty to lookup from URDF
+   *   - leave empty to disable velocity validation
    * \return true on success, false otherwise (an invalid message type)
    */
   virtual bool init(SmplMsgConnection* connection, const std::vector<std::string> &joint_names,

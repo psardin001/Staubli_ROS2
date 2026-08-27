@@ -104,7 +104,7 @@ public:
    *   - Use blank-name to insert a placeholder joint position (typ. 0.0).
    *   - Joints in the incoming JointTrajectory stream that are NOT listed here will be ignored.
    * \param velocity_limits map of maximum velocities for each joint
-   *   - leave empty to lookup from URDF
+   *   - leave empty to disable velocity-limit validation
    * \return true on success, false otherwise (an invalid message type)
    */
   virtual bool init(SmplMsgConnection* connection, const std::vector<std::string> &joint_names,
@@ -251,7 +251,7 @@ protected:
   double default_joint_pos_;  // default position to use for "dummy joints", if none specified
   double default_vel_ratio_;  // default velocity ratio to use for joint commands, if no velocity or max_vel specified
   double default_duration_;   // default duration to use for joint commands, if no
-  std::map<std::string, double> joint_vel_limits_;  // cache of max joint velocities from URDF
+  std::map<std::string, double> joint_vel_limits_;  // configured maximum joint velocities
   sensor_msgs::msg::JointState cur_joint_pos_;  // cache of last received joint state
 
 
@@ -273,4 +273,3 @@ private:
 
 } //joint_trajectory_interface
 } //industrial_robot_client
-

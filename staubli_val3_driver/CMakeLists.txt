@@ -152,7 +152,7 @@ ament_export_include_directories(
 )
 
 install(
-  DIRECTORY launch
+  DIRECTORY config launch
   DESTINATION share/${PROJECT_NAME}
 )
 
@@ -161,7 +161,9 @@ ament_export_dependencies(
 )
 
 if(BUILD_TESTING)
+  find_package(ament_cmake_pytest REQUIRED)
   find_package(ament_lint_auto REQUIRED)
+  ament_add_pytest_test(driver_configuration test/test_driver_configuration.py)
   ament_lint_auto_find_test_dependencies()
 endif()
 

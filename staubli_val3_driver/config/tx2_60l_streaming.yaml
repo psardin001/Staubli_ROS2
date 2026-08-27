@@ -1,0 +1,36 @@
+robot_state_interface:
+  ros__parameters:
+    joint_names:
+      - joint_1
+      - joint_2
+      - joint_3
+      - joint_4
+      - joint_5
+      - joint_6
+
+joint_trajectory_interface:
+  ros__parameters:
+    joint_names:
+      - joint_1
+      - joint_2
+      - joint_3
+      - joint_4
+      - joint_5
+      - joint_6
+    joint_velocity_limits:
+      - 7.592182246175334
+      - 6.719517620178169
+      - 8.726646259971648
+      - 17.36602605734358
+      - 18.58775653373961
+      - 25.22000769131806
+
+joint_trajectory_action:
+  ros__parameters:
+    joint_names:
+      - joint_1
+      - joint_2
+      - joint_3
+      - joint_4
+      - joint_5
+      - joint_6

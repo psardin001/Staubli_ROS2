@@ -33,13 +33,17 @@
 // Changes made to support ROS 2 compatibility.
 // Copyright 2025 ACRO - KULeuven
 
+#include <algorithm>
+#include <set>
+#include <stdexcept>
+#include <vector>
+
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
 #include "trajectory_msgs/msg/joint_trajectory.hpp"
 #include "control_msgs/action/follow_joint_trajectory.hpp"
 #include "industrial_msgs/msg/robot_status.hpp"
 #include "industrial_robot_client/utils.hpp"
-#include "industrial_utils/param_utils.hpp"
 #include "industrial_utils/utils.hpp"
 #include "rclcpp_components/register_node_macro.hpp"
 
@@ -67,7 +71,20 @@ public:
     explicit JointTrajectoryAction(const rclcpp::NodeOptions &options = rclcpp::NodeOptions()) : Node("joint_trajectory_action", options)
     {
         using namespace std::placeholders;
-        joint_names_ = {};
+        joint_names_ = this->declare_parameter<std::vector<std::string>>(
+            "joint_names", std::vector<std::string>());
+        const std::set<std::string> unique_joint_names(
+            joint_names_.begin(), joint_names_.end());
+        if (joint_names_.empty()
+            || unique_joint_names.size() != joint_names_.size()
+            || unique_joint_names.count(std::string()) != 0)
+        {
+            RCLCPP_FATAL(
+                this->get_logger(),
+                "Parameter 'joint_names' must contain unique non-empty names");
+            throw std::runtime_error(
+                "Parameter 'joint_names' must contain unique non-empty names");
+        }
 
         has_active_goal_ = false;
         controller_alive_ = false;
@@ -84,16 +101,7 @@ public:
         this->declare_parameter<double>("constraints/goal_threshold", DEFAULT_GOAL_THRESHOLD_);
         this->get_parameter<double>("constraints/goal_threshold", goal_threshold_);
 
-        industrial_utils::param::ParamUtils pu;
-        // if (!pu.getJointNames("move_group", "rviz2", "controller_joint_names", "robot_description", joint_names_))
-        if (!pu.getJointNames("move_group", "moveit_simple_controller_manager.manipulator_controller.joints", joint_names_))
-
-            RCLCPP_ERROR(this->get_logger(), "Failed to initialize joint_names.");
-
-        // The controller joint names parameter includes empty joint names for those joints not supported
-        // by the controller.  These are removed since the trajectory action should ignore these.
-        std::remove(joint_names_.begin(), joint_names_.end(), std::string());
-        RCLCPP_INFO_STREAM(this->get_logger(), "Filtered joint names to " << joint_names_.size() << " joints");
+        RCLCPP_INFO_STREAM(this->get_logger(), "Configured " << joint_names_.size() << " controller joints");
 
         pub_trajectory_command_ = this->create_publisher<trajectory_msgs::msg::JointTrajectory>("joint_path_command", 1);
         sub_trajectory_state_ = this->create_subscription<control_msgs::action::FollowJointTrajectory_FeedbackMessage>("feedback_states", 1, std::bind(&JointTrajectoryAction::controllerStateCB, this, _1));

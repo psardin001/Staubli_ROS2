@@ -45,10 +45,12 @@ int main(int argc, char** argv)
 
   // launch the default Robot State Interface connection/handlers
   std::shared_ptr<RobotStateInterface> rsi = std::make_shared<RobotStateInterface>();
-  if (rsi->init())
+  if (!rsi->init())
   {
-    rsi->run();
+    rclcpp::shutdown();
+    return 1;
   }
+  rsi->run();
 
   rclcpp::spin(rsi);
   rclcpp::shutdown();

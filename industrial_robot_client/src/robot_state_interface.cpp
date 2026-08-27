@@ -33,11 +33,11 @@
 // Changes made to support ROS 2 compatibility.
 // Copyright 2025 ACRO - KULeuven
 
+#include <set>
+
 #include "industrial_robot_client/robot_state_interface.hpp"
-#include "industrial_utils/param_utils.hpp"
 
 using industrial::smpl_msg_connection::SmplMsgConnection;
-using industrial_utils::param::ParamUtils;
 namespace StandardSocketPorts = industrial::simple_socket::StandardSocketPorts;
 
 namespace industrial_robot_client
@@ -85,16 +85,22 @@ bool RobotStateInterface::init(std::string default_ip, int default_port)
 
 bool RobotStateInterface::init(industrial::smpl_msg_connection::SmplMsgConnection *connection)
 {
-  std::vector<std::string> joint_names;
-  ParamUtils pu;
-  // if (!pu.getJointNames("move_group", "rviz2", "controller_joint_names", "robot_description", joint_names))
-  if (!pu.getJointNames("move_group", "moveit_simple_controller_manager.manipulator_controller.joints", joint_names))
+  const auto joint_names = this->declare_parameter<std::vector<std::string>>(
+    "joint_names", std::vector<std::string>());
+  const std::set<std::string> unique_joint_names(
+    joint_names.begin(), joint_names.end());
+  if (joint_names.empty()
+    || unique_joint_names.size() != joint_names.size()
+    || unique_joint_names.count(std::string()) != 0)
   {
-    RCLCPP_ERROR(this->get_logger(), "Failed to initialize joint_names.  Aborting");
+    RCLCPP_ERROR(
+      this->get_logger(),
+      "Parameter 'joint_names' must contain unique non-empty names");
     return false;
   }
 
-  return init(connection, joint_names);
+  auto configured_joint_names = joint_names;
+  return init(connection, configured_joint_names);
 }
 
 bool RobotStateInterface::init(industrial::smpl_msg_connection::SmplMsgConnection *connection, 

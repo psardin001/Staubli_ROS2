@@ -30,7 +30,10 @@ int main(int argc, char** argv)
   std::shared_ptr<IOInterface> io = std::make_shared<IOInterface>();
 
   if (!io->init())
-    return 0;
+  {
+    rclcpp::shutdown();
+    return 1;
+  }
   io->run();
 
   rclcpp::spin(io);

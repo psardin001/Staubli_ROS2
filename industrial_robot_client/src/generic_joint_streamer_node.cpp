@@ -42,10 +42,12 @@ int main(int argc, char** argv)
   // initialize node
   rclcpp::init(argc, argv);
 
-  rclcpp::Node::SharedPtr node = std::make_shared<rclcpp::Node>("motion_streaming_interface");
-
   std::shared_ptr<JointTrajectoryStreamer> jts = std::make_shared<JointTrajectoryStreamer>();
-  jts->init();
+  if (!jts->init())
+  {
+    rclcpp::shutdown();
+    return 1;
+  }
 
   rclcpp::spin(jts);
   rclcpp::shutdown();
