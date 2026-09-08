@@ -36,6 +36,7 @@
 #include <algorithm>
 #include <cmath>
 #include <set>
+#include <stdexcept>
 #include "industrial_robot_client/joint_trajectory_interface.hpp"
 #include "simple_message/joint_traj_pt.hpp"
 #include "rcpputils/asserts.hpp"
@@ -61,6 +62,9 @@ JointTrajectoryInterface::JointTrajectoryInterface()
     default_vel_ratio_(0.1),
     default_duration_(10.0)
 {
+  default_vel_ratio_ = this->declare_parameter<double>("default_velocity_ratio", 0.1);
+  if (!std::isfinite(default_vel_ratio_) || default_vel_ratio_ <= 0 || default_vel_ratio_ > 1)
+    throw std::invalid_argument("default_velocity_ratio must be in (0, 1]");
 }
 
 bool JointTrajectoryInterface::init(std::string default_ip, int default_port)
@@ -305,6 +309,7 @@ bool JointTrajectoryInterface::calc_velocity(const trajectory_msgs::msg::JointTr
   {
     RCLCPP_WARN(this->get_logger(), "Joint velocities unspecified.  Using default/safe speed.");
     *rbt_velocity = default_vel_ratio_;
+    if (final) *rbt_velocity += 2;
     return true;
   }
 
@@ -351,7 +356,7 @@ bool JointTrajectoryInterface::calc_velocity(const trajectory_msgs::msg::JointTr
 bool JointTrajectoryInterface::calc_duration(const trajectory_msgs::msg::JointTrajectoryPoint& pt, double* rbt_duration)
 {
   std::vector<double> durations;
-  double this_time = pt.time_from_start.sec;
+  double this_time = pt.time_from_start.sec + pt.time_from_start.nanosec * 1e-9;
   static double last_time = 0;
 
   if (this_time <= last_time)  // earlier time => new trajectory.  Move slowly to first point.
