@@ -107,7 +107,7 @@ public:
 
   ~JointTrajectoryStreamer();
 
-  virtual void jointTrajectoryCB(const trajectory_msgs::msg::JointTrajectory::SharedPtr &msg);
+  void jointTrajectorySubCB(const trajectory_msgs::msg::JointTrajectory::SharedPtr msg) override;
 
   virtual bool trajectory_to_msgs(const trajectory_msgs::msg::JointTrajectory::SharedPtr &traj, std::vector<JointTrajPtMessage>* msgs);
 

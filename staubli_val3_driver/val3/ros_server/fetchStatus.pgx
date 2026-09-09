@@ -44,14 +44,12 @@
     rosStatusMsg.robotStatus.nErrorCode = taskStatus(sStreamerTask)
   elseIf (taskStatus(sHeartbeatTask) > 1)
     rosStatusMsg.robotStatus.nErrorCode = taskStatus(sHeartbeatTask)
-  elseIf (taskStatus(sScreenTask) > 1)
-    rosStatusMsg.robotStatus.nErrorCode = taskStatus(sScreenTask)
   else
     rosStatusMsg.robotStatus.nErrorCode = 0
   endIf
 
   // in_error
-  if (taskStatus(sMotionRecvTask) == 1 and taskStatus(sMotionTask) == 1 and taskStatus(sStreamerTask) == 1 and taskStatus(sScreenTask) == 1 and taskStatus(sHeartbeatTask) == 1)
+  if (taskStatus(sMotionRecvTask) == 1 and taskStatus(sMotionTask) == 1 and taskStatus(sStreamerTask) == 1 and taskStatus(sHeartbeatTask) == 1)
     rosStatusMsg.robotStatus.nInError = 0
   else
     rosStatusMsg.robotStatus.nInError = 1

@@ -45,6 +45,7 @@ namespace joint_trajectory_streamer
 JointTrajectoryStreamer::JointTrajectoryStreamer(int min_buffer_size) 
   : JointTrajectoryInterface()
   , min_buffer_size_(min_buffer_size)
+  , streaming_thread_(nullptr)
 {
 };
 
@@ -71,10 +72,12 @@ bool JointTrajectoryStreamer::init(SmplMsgConnection* connection, const std::vec
 
 JointTrajectoryStreamer::~JointTrajectoryStreamer()
 {
+  if (this->streaming_thread_ != nullptr)
+    this->streaming_thread_->join();
   delete this->streaming_thread_;
 }
 
-void JointTrajectoryStreamer::jointTrajectoryCB(const trajectory_msgs::msg::JointTrajectory::SharedPtr &msg)
+void JointTrajectoryStreamer::jointTrajectorySubCB(const trajectory_msgs::msg::JointTrajectory::SharedPtr msg)
 {
   RCLCPP_INFO(this->get_logger(), "Receiving joint trajectory message");
 
@@ -210,9 +213,17 @@ void JointTrajectoryStreamer::streamingThread()
         RCLCPP_DEBUG(this->get_logger(), "Sending joint trajectory point");
         if (this->connection_->sendAndReceiveMsg(msg, reply, false))
         {
-          this->current_point_++;
-          RCLCPP_DEBUG(this->get_logger(), "Point[%d of %d] sent to controller",
-                   this->current_point_, (int)this->current_traj_.size());
+          // A received reply may reject a point, e.g. when the controller queue is full.
+          if (reply.getReplyCode() == industrial::simple_message::ReplyTypes::SUCCESS)
+          {
+            this->current_point_++;
+            RCLCPP_DEBUG(this->get_logger(), "Point[%d of %d] accepted by controller",
+                     this->current_point_, (int)this->current_traj_.size());
+          }
+          else
+            RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 1000,
+                "Controller rejected trajectory point %d/%zu (reply=%d); retrying the same point",
+                this->current_point_ + 1, this->current_traj_.size(), reply.getReplyCode());
         }
         else
           RCLCPP_WARN(this->get_logger(), "Failed sent joint point, will try again");
@@ -240,4 +251,3 @@ void JointTrajectoryStreamer::trajectoryStop()
 
 } //joint_trajectory_streamer
 } //industrial_robot_client
-

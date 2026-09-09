@@ -88,7 +88,7 @@ public:
 
         has_active_goal_ = false;
         controller_alive_ = false;
-        has_moved_once_ = false;
+        trajectory_started_ = false;
         has_succeeded_ = false;
         name_ = "manipulator_controller/joint_trajectory_action";
         action_server_ = rclcpp_action::create_server<FJT>(
@@ -173,10 +173,9 @@ private:
     bool has_active_goal_;
 
     /**
-     * \brief Indicates that the robot has been in a moving state at least once since
-     * starting the current active trajectory
+     * \brief Indicates that the controller acknowledged the current trajectory as incomplete
      */
-    bool has_moved_once_;
+    bool trajectory_started_;
 
     /**
      * \brief Indicates if the robot has successfully finished the trajectory 
@@ -232,11 +231,7 @@ private:
      */
     industrial_msgs::msg::RobotStatus::SharedPtr last_robot_status_;
 
-    /**
-     * \brief Time at which to start checking for completion of current
-     * goal, if one is active
-     */
-    rclcpp::Time time_to_check_;
+    rclcpp::Time last_status_time_;
 
     /**
      * \brief The watchdog period (seconds)
@@ -308,14 +303,8 @@ private:
                     }
                     active_goal_ = *goal;
             
-                    builtin_interfaces::msg::Duration temp = active_goal_.trajectory.points.back().time_from_start;
-                    // RCLCPP_INFO(this->get_logger(), "sec: %i", test.seconds());
-                    // RCLCPP_INFO(this->get_logger(), "nsec: %i", test.nanoseconds());
-                    temp.sec = temp.sec/2;
-                    temp.nanosec = temp.nanosec/2;
-                    rclcpp::Duration test(temp);
-                    time_to_check_ = this->now() + rclcpp::Duration(temp);
-                    has_moved_once_ = false;
+                    trajectory_started_ = false;
+                    last_robot_status_.reset();
                     current_traj_ = active_goal_.trajectory;
                 }
                 else
@@ -446,9 +435,8 @@ private:
             return;
         }
 
-        if (!has_moved_once_ && (this->now() < time_to_check_))
+        if (!trajectory_started_)
         {
-            // RCLCPP_INFO(this->get_logger(), "Waiting to check for goal completion until halfway through trajectory");
             return;
         }
 
@@ -456,39 +444,15 @@ private:
         // Checks that we have ended inside the goal constraints and has motion stopped
 
         RCLCPP_DEBUG_STREAM(this->get_logger(), "Checking goal constraints");
-        if (withinGoalConstraints(last_trajectory_state_, current_traj_))
+        if (withinGoalConstraints(last_trajectory_state_, current_traj_)
+            && last_robot_status_
+            && (this->now() - last_status_time_).seconds() <= WATCHDOG_PERIOD_
+            && last_robot_status_->in_motion.val == industrial_msgs::msg::TriState::FALSE
+            && last_robot_status_->trajectory_complete.val == industrial_msgs::msg::TriState::TRUE)
         {
-            if (last_robot_status_)
-            {
-            // Additional check for motion stoppage since the controller goal may still
-            // be moving.  The current robot driver calls a motion stop if it receives
-            // a new trajectory while it is still moving.  If the driver is not publishing
-            // the motion state (i.e. old driver), this will still work, but it warns you.
-            if (last_robot_status_->in_motion.val == industrial_msgs::msg::TriState::FALSE && last_robot_status_->trajectory_complete.val == industrial_msgs::msg::TriState::TRUE)
-            {
-                RCLCPP_INFO(this->get_logger(), "Inside goal constraints - stopped moving-  return success for action");
-                has_active_goal_ = false;
-                has_succeeded_ = true;
-            }
-            else if (last_robot_status_->in_motion.val == industrial_msgs::msg::TriState::UNKNOWN)
-            {
-                RCLCPP_INFO(this->get_logger(), "Inside goal constraints, return success for action");
-                RCLCPP_WARN(this->get_logger(), "Robot status in motion unknown, the robot driver node and controller code should be updated");
-                has_active_goal_ = false;
-                has_succeeded_ = true;
-            }
-            else
-            {
-                RCLCPP_DEBUG(this->get_logger(), "Within goal constraints but robot is still moving");
-            }
-            }
-            else
-            {
-            RCLCPP_INFO(this->get_logger(), "Inside goal constraints, return success for action");
-            RCLCPP_WARN(this->get_logger(), "Robot status is not being published the robot driver node and controller code should be updated");
+            RCLCPP_INFO(this->get_logger(), "Trajectory completed and robot stopped");
             has_active_goal_ = false;
             has_succeeded_ = true;
-            }
         }
     }
 
@@ -502,7 +466,9 @@ private:
     void robotStatusCB(const industrial_msgs::msg::RobotStatus::SharedPtr msg)
     {
         last_robot_status_= msg; //caching robot status for later use.
-        has_moved_once_ = has_moved_once_ ? true : (last_robot_status_->in_motion.val == industrial_msgs::msg::TriState::TRUE);
+        last_status_time_ = this->now();
+        trajectory_started_ = trajectory_started_ || (has_active_goal_
+            && msg->trajectory_complete.val == industrial_msgs::msg::TriState::FALSE);
     }
 
     /**

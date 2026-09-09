@@ -45,7 +45,6 @@ int main(int argc, char** argv)
   // run the node
   rsi->run();
 
-  rclcpp::spin(rsi);
   rclcpp::shutdown();
   return 0;
 }

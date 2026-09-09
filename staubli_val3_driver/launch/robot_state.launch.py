@@ -35,6 +35,11 @@ def generate_launch_description():
                     joint_config,
                     {'robot_ip_address': robot_ip},
                 ],
+                # Keep the legacy position-only relay on its own topics.
+                remappings=[
+                    ('joint_relay_handler:joint_states', 'legacy_joint_states'),
+                    ('joint_relay_handler:feedback_states', 'legacy_feedback_states'),
+                ],
                 output='log',
             ),
         ]
