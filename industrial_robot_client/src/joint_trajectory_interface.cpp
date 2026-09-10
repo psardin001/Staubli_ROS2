@@ -329,14 +329,14 @@ bool JointTrajectoryInterface::calc_velocity(const trajectory_msgs::msg::JointTr
   // find largest velocity-ratio (closest to max joint-speed)
   int max_idx = std::max_element(vel_ratios.begin(), vel_ratios.end()) - vel_ratios.begin();
   
-  if (vel_ratios[max_idx] > default_vel_ratio_)
+  if (vel_ratios[max_idx] > 0)
   {
     *rbt_velocity = vel_ratios[max_idx];
     RCLCPP_INFO(this->get_logger(), "vel ratio: %s", std::to_string(*rbt_velocity).c_str());
   }
   else
   {
-    RCLCPP_WARN(this->get_logger(), "Joint velocity-limits unspecified.  Using default velocity-ratio.");
+    RCLCPP_WARN(this->get_logger(), "Joint velocities zero or limits unspecified.  Using default velocity-ratio.");
     *rbt_velocity = default_vel_ratio_;
   }
 
